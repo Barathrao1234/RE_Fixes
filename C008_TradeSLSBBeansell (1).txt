@@ -1,0 +1,642 @@
+==== COMBINED CODE FOR CHUNK: C008_TradeSLSBBeansell (parent_entity: TradeSLSBBean.sell) ====
+
+--- BEGIN METHOD: TradeSLSBBean.sell no_of_lines : 56 ---
+f219_165     @Override
+f219_166     public OrderDataBean sell(final String userID, final Integer holdingID, int orderProcessingMode) {
+f219_167         OrderDataBean order;
+f219_168         BigDecimal total;
+f219_169         try {
+f219_170             if (Log.doTrace()) {
+f219_171                 Log.trace("TradeSLSBBean:sell", userID, holdingID, orderProcessingMode);
+f219_172             }
+f219_173             
+f219_174             AccountProfileDataBean profile = entityManager.find(AccountProfileDataBean.class, userID);
+f219_175             AccountDataBean account = profile.getAccount();
+f219_176 
+f219_177             HoldingDataBean holding = entityManager.find(HoldingDataBean.class, holdingID);
+f219_178             
+f219_179             if (holding == null) {
+f219_180                 Log.error("TradeSLSBBean:sell User " + userID + " attempted to sell holding " + holdingID + " which has already been sold");
+f219_181 
+f219_182                 OrderDataBean orderData = new OrderDataBean();
+f219_183                 orderData.setOrderStatus("cancelled");
+f219_184                 entityManager.persist(orderData);
+f219_185 
+f219_186                 return orderData;
+f219_187             }
+f219_188 
+f219_189             QuoteDataBean quote = holding.getQuote();
+f219_190             double quantity = holding.getQuantity();
+f219_191             order = createOrder(account, quote, holding, "sell", quantity);
+f219_192 
+f219_193             // UPDATE the holding purchase data to signify this holding is
+f219_194             // "inflight" to be sold
+f219_195             // -- could add a new holdingStatus attribute to holdingEJB
+f219_196             holding.setPurchaseDate(new java.sql.Timestamp(0));
+f219_197 
+f219_198             // UPDATE - account should be credited during completeOrder
+f219_199             BigDecimal price = quote.getPrice();
+f219_200             BigDecimal orderFee = order.getOrderFee();
+f219_201             BigDecimal balance = account.getBalance();
+f219_202             total = (new BigDecimal(quantity).multiply(price)).subtract(orderFee);
+f219_203             account.setBalance(balance.add(total));
+f219_204             final Integer orderID=order.getOrderID();
+f219_205 
+f219_206             if (orderProcessingMode == TradeConfig.SYNCH) {
+f219_207                 completeOrder(orderID, false);
+f219_208             } else {
+f219_209                 entityManager.flush();
+f219_210                 queueOrder(orderID, true);
+f219_211             }
+f219_212 
+f219_213         } catch (Exception e) {
+f219_214             Log.error("TradeSLSBBean:sell(" + userID + "," + holdingID + ") --> failed", e);
+f219_215             // if (order != null) order.cancel();
+f219_216             // UPDATE - handle all exceptions like:
+f219_217             throw new EJBException("TradeSLSBBean:sell(" + userID + "," + holdingID + ")", e);
+f219_218         }
+f219_219         return order;
+f219_220     }
+--- END METHOD: TradeSLSBBean.sell no_of_lines : 56 ---
+
+--- BEGIN METHOD: HoldingDataBean.setPurchaseDate no_of_lines : 3 ---
+f53_147     public void setPurchaseDate(Date purchaseDate) {
+f53_148         this.purchaseDate = purchaseDate;
+f53_149     }
+--- END METHOD: HoldingDataBean.setPurchaseDate no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.OrderDataBean no_of_lines : 29 ---
+f93_113     public OrderDataBean() {
+f93_114     }
+
+f93_116     public OrderDataBean(Integer orderID, String orderType, String orderStatus, Date openDate, Date completionDate, double quantity, BigDecimal price,
+f93_117             BigDecimal orderFee, String symbol) {
+f93_118         setOrderID(orderID);
+f93_119         setOrderType(orderType);
+f93_120         setOrderStatus(orderStatus);
+f93_121         setOpenDate(openDate);
+f93_122         setCompletionDate(completionDate);
+f93_123         setQuantity(quantity);
+f93_124         setPrice(price);
+f93_125         setOrderFee(orderFee);
+f93_126         setSymbol(symbol);
+f93_127     }
+
+f93_129     public OrderDataBean(String orderType, String orderStatus, Date openDate, Date completionDate, double quantity, BigDecimal price, BigDecimal orderFee,
+f93_130             AccountDataBean account, QuoteDataBean quote, HoldingDataBean holding) {
+f93_131         setOrderType(orderType);
+f93_132         setOrderStatus(orderStatus);
+f93_133         setOpenDate(openDate);
+f93_134         setCompletionDate(completionDate);
+f93_135         setQuantity(quantity);
+f93_136         setPrice(price);
+f93_137         setOrderFee(orderFee);
+f93_138         setAccount(account);
+f93_139         setQuote(quote);
+f93_140         setHolding(holding);
+f93_141     }
+--- END METHOD: OrderDataBean.OrderDataBean no_of_lines : 29 ---
+
+--- BEGIN METHOD: OrderDataBean.setPrice no_of_lines : 3 ---
+f93_219     public void setPrice(BigDecimal price) {
+f93_220         this.price = price;
+f93_221     }
+--- END METHOD: OrderDataBean.setPrice no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setOrderType no_of_lines : 3 ---
+f93_179     public void setOrderType(String orderType) {
+f93_180         this.orderType = orderType;
+f93_181     }
+--- END METHOD: OrderDataBean.setOrderType no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setHolding no_of_lines : 3 ---
+f93_262     public void setHolding(HoldingDataBean holding) {
+f93_263         this.holding = holding;
+f93_264     }
+--- END METHOD: OrderDataBean.setHolding no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setOrderID no_of_lines : 3 ---
+f93_171     public void setOrderID(Integer orderID) {
+f93_172         this.orderID = orderID;
+f93_173     }
+--- END METHOD: OrderDataBean.setOrderID no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setSymbol no_of_lines : 3 ---
+f93_238     public void setSymbol(String symbol) {
+f93_239         this.symbol = symbol;
+f93_240     }
+--- END METHOD: OrderDataBean.setSymbol no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setOpenDate no_of_lines : 3 ---
+f93_195     public void setOpenDate(Date openDate) {
+f93_196         this.openDate = openDate;
+f93_197     }
+--- END METHOD: OrderDataBean.setOpenDate no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setCompletionDate no_of_lines : 3 ---
+f93_203     public void setCompletionDate(Date completionDate) {
+f93_204         this.completionDate = completionDate;
+f93_205     }
+--- END METHOD: OrderDataBean.setCompletionDate no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setQuote no_of_lines : 3 ---
+f93_254     public void setQuote(QuoteDataBean quote) {
+f93_255         this.quote = quote;
+f93_256     }
+--- END METHOD: OrderDataBean.setQuote no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setAccount no_of_lines : 3 ---
+f93_246     public void setAccount(AccountDataBean account) {
+f93_247         this.account = account;
+f93_248     }
+--- END METHOD: OrderDataBean.setAccount no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setOrderFee no_of_lines : 3 ---
+f93_227     public void setOrderFee(BigDecimal orderFee) {
+f93_228         this.orderFee = orderFee;
+f93_229     }
+--- END METHOD: OrderDataBean.setOrderFee no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setOrderStatus no_of_lines : 3 ---
+f93_187     public void setOrderStatus(String orderStatus) {
+f93_188         this.orderStatus = orderStatus;
+f93_189     }
+--- END METHOD: OrderDataBean.setOrderStatus no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.setQuantity no_of_lines : 3 ---
+f93_211     public void setQuantity(double quantity) {
+f93_212         this.quantity = quantity;
+f93_213     }
+--- END METHOD: OrderDataBean.setQuantity no_of_lines : 3 ---
+
+--- BEGIN METHOD: AccountProfileDataBean.getAccount no_of_lines : 3 ---
+f10_148     public AccountDataBean getAccount() {
+f10_149         return account;
+f10_150     }
+--- END METHOD: AccountProfileDataBean.getAccount no_of_lines : 3 ---
+
+--- BEGIN METHOD: QuoteDataBean.getPrice no_of_lines : 3 ---
+f174_139     public BigDecimal getPrice() {
+f174_140         return price;
+f174_141     }
+--- END METHOD: QuoteDataBean.getPrice no_of_lines : 3 ---
+
+--- BEGIN METHOD: orderData.setOrderStatus no_of_lines : 3 ---
+f92_68     public void setOrderStatus(String orderStatus) {
+f92_69         this.orderStatus = orderStatus;
+f92_70     }
+--- END METHOD: orderData.setOrderStatus no_of_lines : 3 ---
+
+--- BEGIN METHOD: TradeSLSBBean.queueOrder no_of_lines : 30 ---
+f219_222     @Override
+f219_223     public void queueOrder(Integer orderID, boolean twoPhase) {
+f219_224         if (Log.doTrace()) {
+f219_225             Log.trace("TradeSLSBBean:queueOrder", orderID);
+f219_226         }
+f219_227                 	
+f219_228         if (TradeConfig.getOrderProcessingMode() == TradeConfig.ASYNCH_MANAGEDTHREAD) {
+f219_229         
+f219_230             Thread thread = managedThreadFactory.newThread(new CompleteOrderThread(orderID, twoPhase));
+f219_231             
+f219_232             thread.start();
+f219_233         
+f219_234         } else {
+f219_235         
+f219_236             try (JMSContext queueContext = queueConnectionFactory.createContext();) {
+f219_237                 TextMessage message = queueContext.createTextMessage();
+f219_238 
+f219_239                 message.setStringProperty("command", "neworder");
+f219_240                 message.setIntProperty("orderID", orderID);
+f219_241                 message.setBooleanProperty("twoPhase", twoPhase);
+f219_242                 message.setText("neworder: orderID=" + orderID + " runtimeMode=EJB twoPhase=" + twoPhase);
+f219_243                 message.setLongProperty("publishTime", System.currentTimeMillis());
+f219_244         		        		
+f219_245                 queueContext.createProducer().send(tradeBrokerQueue, message);
+f219_246         		
+f219_247             } catch (Exception e) {
+f219_248                 throw new EJBException(e.getMessage(), e); // pass the exception
+f219_249             }
+f219_250         }
+f219_251     }
+--- END METHOD: TradeSLSBBean.queueOrder no_of_lines : 30 ---
+
+--- BEGIN METHOD: CompleteOrderThread.CompleteOrderThread no_of_lines : 4 ---
+f20_32         public CompleteOrderThread (Integer id, boolean twoPhase) {
+f20_33             orderID = id;
+f20_34             this.twoPhase = twoPhase;
+f20_35         }
+--- END METHOD: CompleteOrderThread.CompleteOrderThread no_of_lines : 4 ---
+
+--- BEGIN METHOD: TradeConfig.getOrderProcessingMode no_of_lines : 3 ---
+f206_815     public static int getOrderProcessingMode() {
+f206_816         return orderProcessingMode;
+f206_817     }
+--- END METHOD: TradeConfig.getOrderProcessingMode no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.getOrderID no_of_lines : 3 ---
+f93_167     public Integer getOrderID() {
+f93_168         return orderID;
+f93_169     }
+--- END METHOD: OrderDataBean.getOrderID no_of_lines : 3 ---
+
+--- BEGIN METHOD: HoldingDataBean.getQuote no_of_lines : 3 ---
+f53_170     public QuoteDataBean getQuote() {
+f53_171         return quote;
+f53_172     }
+--- END METHOD: HoldingDataBean.getQuote no_of_lines : 3 ---
+
+--- BEGIN METHOD: TradeSLSBBean.createOrder no_of_lines : 18 ---
+f219_650     private OrderDataBean createOrder(AccountDataBean account, QuoteDataBean quote, HoldingDataBean holding, String orderType, double quantity) {
+f219_651 
+f219_652         OrderDataBean order;
+f219_653 
+f219_654         if (Log.doTrace()) {
+f219_655             Log.trace("TradeSLSBBean:createOrder(orderID=" + " account=" + ((account == null) ? null : account.getAccountID()) + " quote="
+f219_656                     + ((quote == null) ? null : quote.getSymbol()) + " orderType=" + orderType + " quantity=" + quantity);
+f219_657         }
+f219_658         try {
+f219_659             order = new OrderDataBean(orderType, "open", new Timestamp(System.currentTimeMillis()), null, quantity, quote.getPrice().setScale(
+f219_660                     FinancialUtils.SCALE, FinancialUtils.ROUND), TradeConfig.getOrderFee(orderType), account, quote, holding);
+f219_661             entityManager.persist(order);
+f219_662         } catch (Exception e) {
+f219_663             Log.error("TradeSLSBBean:createOrder -- failed to create Order. The stock/quote may not exist in the database.", e);
+f219_664             throw new EJBException("TradeSLSBBean:createOrder -- failed to create Order. Check that the symbol exists in the database.", e);
+f219_665         }
+f219_666         return order;
+f219_667     }
+--- END METHOD: TradeSLSBBean.createOrder no_of_lines : 18 ---
+
+--- BEGIN METHOD: TradeConfig.getOrderFee no_of_lines : 8 ---
+f206_289     public static BigDecimal getOrderFee(String orderType) {
+f206_290         if ((orderType.compareToIgnoreCase("BUY") == 0) || (orderType.compareToIgnoreCase("SELL") == 0)) {
+f206_291             return orderFee;
+f206_292         }
+f206_293 
+f206_294         return cashFee;
+f206_295 
+f206_296     }
+--- END METHOD: TradeConfig.getOrderFee no_of_lines : 8 ---
+
+--- BEGIN METHOD: QuoteDataBean.getSymbol no_of_lines : 3 ---
+f174_123     public String getSymbol() {
+f174_124         return symbol;
+f174_125     }
+--- END METHOD: QuoteDataBean.getSymbol no_of_lines : 3 ---
+
+--- BEGIN METHOD: AccountDataBean.getAccountID no_of_lines : 3 ---
+f7_151     public Integer getAccountID() {
+f7_152         return accountID;
+f7_153     }
+--- END METHOD: AccountDataBean.getAccountID no_of_lines : 3 ---
+
+--- BEGIN METHOD: AccountDataBean.getBalance no_of_lines : 3 ---
+f7_191     public BigDecimal getBalance() {
+f7_192         return balance;
+f7_193     }
+--- END METHOD: AccountDataBean.getBalance no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.cancel no_of_lines : 3 ---
+f93_307     public void cancel() {
+f93_308         setOrderStatus("cancelled");
+f93_309     }
+--- END METHOD: OrderDataBean.cancel no_of_lines : 3 ---
+
+--- BEGIN METHOD: TradeSLSBBean.completeOrder no_of_lines : 76 ---
+f219_253     @Override
+f219_254     public OrderDataBean completeOrder(Integer orderID, boolean twoPhase) throws Exception {
+f219_255         if (Log.doTrace()) {
+f219_256             Log.trace("TradeSLSBBean:completeOrder", orderID + " twoPhase=" + twoPhase);
+f219_257         }  
+f219_258               
+f219_259         OrderDataBean order = entityManager.find(OrderDataBean.class, orderID);
+f219_260         
+f219_261         if (order == null) {
+f219_262             throw new EJBException("Error: attempt to complete Order that is null\n" + order);
+f219_263         }
+f219_264         
+f219_265         order.getQuote();
+f219_266 
+f219_267         if (order.isCompleted()) {
+f219_268             throw new EJBException("Error: attempt to complete Order that is already completed\n" + order);
+f219_269         }
+f219_270 
+f219_271         AccountDataBean account = order.getAccount();
+f219_272         QuoteDataBean quote = order.getQuote();
+f219_273         HoldingDataBean holding = order.getHolding();
+f219_274         BigDecimal price = order.getPrice();
+f219_275         double quantity = order.getQuantity();
+f219_276 
+f219_277         String userID = account.getProfile().getUserID();
+f219_278 
+f219_279         if (Log.doTrace()) {
+f219_280             Log.trace("TradeSLSBBeanInternal:completeOrder--> Completing Order " + order.getOrderID() + "\n\t Order info: " + order + "\n\t Account info: "
+f219_281                     + account + "\n\t Quote info: " + quote + "\n\t Holding info: " + holding);
+f219_282         }
+f219_283 
+f219_284         if (order.isBuy()) {
+f219_285             /*
+f219_286              * Complete a Buy operation - create a new Holding for the Account -
+f219_287              * deduct the Order cost from the Account balance
+f219_288              */
+f219_289 
+f219_290             HoldingDataBean newHolding = createHolding(account, quote, quantity, price);
+f219_291             order.setHolding(newHolding);
+f219_292         }
+f219_293 
+f219_294         if (order.isSell()) {
+f219_295             /*
+f219_296              * Complete a Sell operation - remove the Holding from the Account -
+f219_297              * deposit the Order proceeds to the Account balance
+f219_298              */
+f219_299             if (holding == null) {
+f219_300                 //Log.error("TradeSLSBBean:completeOrder -- Unable to sell order " + order.getOrderID() + " holding already sold");
+f219_301                 order.cancel();
+f219_302                 throw new EJBException("TradeSLSBBean:completeOrder -- Unable to sell order " + order.getOrderID() + " holding already sold");
+f219_303             } else {
+f219_304                 entityManager.remove(holding);
+f219_305                 order.setHolding(null);
+f219_306             }
+f219_307             
+f219_308             
+f219_309         }
+f219_310         order.setOrderStatus("closed");
+f219_311 
+f219_312         order.setCompletionDate(new java.sql.Timestamp(System.currentTimeMillis()));
+f219_313 
+f219_314         if (Log.doTrace()) {
+f219_315             Log.trace("TradeSLSBBean:completeOrder--> Completed Order " + order.getOrderID() + "\n\t Order info: " + order + "\n\t Account info: " + account
+f219_316                     + "\n\t Quote info: " + quote + "\n\t Holding info: " + holding);
+f219_317         }
+f219_318         // if (Log.doTrace())
+f219_319         // Log.trace("Calling TradeAction:orderCompleted from Session EJB using Session Object");
+f219_320         // FUTURE All getEJBObjects could be local -- need to add local I/F
+f219_321 
+f219_322         TradeAction tradeAction = new TradeAction();
+f219_323         tradeAction.orderCompleted(userID, orderID);
+f219_324 
+f219_325        
+f219_326         
+f219_327         return order;
+f219_328     }
+--- END METHOD: TradeSLSBBean.completeOrder no_of_lines : 76 ---
+
+--- BEGIN METHOD: AccountProfileDataBean.getUserID no_of_lines : 3 ---
+f10_100     public String getUserID() {
+f10_101         return userID;
+f10_102     }
+--- END METHOD: AccountProfileDataBean.getUserID no_of_lines : 3 ---
+
+--- BEGIN METHOD: TradeAction.orderCompleted no_of_lines : 10 ---
+f201_362     @Override
+f201_363     public void orderCompleted(String userID, Integer orderID) throws Exception {
+f201_364 
+f201_365         if (Log.doActionTrace()) {
+f201_366             Log.trace("TradeAction:orderCompleted", userID, orderID);
+f201_367         }
+f201_368         if (Log.doTrace()) {
+f201_369             Log.trace("OrderCompleted", userID, orderID);
+f201_370         }
+f201_371     }
+--- END METHOD: TradeAction.orderCompleted no_of_lines : 10 ---
+
+--- BEGIN METHOD: TradeAction.TradeAction no_of_lines : 13 ---
+f201_95     public TradeAction() {
+f201_96         if (Log.doTrace()) {
+f201_97             Log.trace("TradeAction:TradeAction()");
+f201_98         }
+f201_99         createTrade();
+f201_100     }
+
+f201_102     public TradeAction(TradeServices trade) {
+f201_103         if (Log.doActionTrace()) {
+f201_104             Log.trace("TradeAction:TradeAction(trade)");
+f201_105         }
+f201_106         TradeAction.trade = trade;
+f201_107     }
+--- END METHOD: TradeAction.TradeAction no_of_lines : 13 ---
+
+--- BEGIN METHOD: AccountDataBean.getProfile no_of_lines : 3 ---
+f7_235     public AccountProfileDataBean getProfile() {
+f7_236         return profile;
+f7_237     }
+--- END METHOD: AccountDataBean.getProfile no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.getQuote no_of_lines : 3 ---
+f93_250     public QuoteDataBean getQuote() {
+f93_251         return quote;
+f93_252     }
+--- END METHOD: OrderDataBean.getQuote no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.isBuy no_of_lines : 7 ---
+f93_266     public boolean isBuy() {
+f93_267         String orderType = getOrderType();
+f93_268         if (orderType.compareToIgnoreCase("buy") == 0) {
+f93_269             return true;
+f93_270         }
+f93_271         return false;
+f93_272     }
+--- END METHOD: OrderDataBean.isBuy no_of_lines : 7 ---
+
+--- BEGIN METHOD: OrderDataBean.getOrderType no_of_lines : 3 ---
+f93_175     public String getOrderType() {
+f93_176         return orderType;
+f93_177     }
+--- END METHOD: OrderDataBean.getOrderType no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.getPrice no_of_lines : 3 ---
+f93_215     public BigDecimal getPrice() {
+f93_216         return price;
+f93_217     }
+--- END METHOD: OrderDataBean.getPrice no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.isCompleted no_of_lines : 8 ---
+f93_290     public boolean isCompleted() {
+f93_291         String orderStatus = getOrderStatus();
+f93_292         if ((orderStatus.compareToIgnoreCase("completed") == 0) || (orderStatus.compareToIgnoreCase("alertcompleted") == 0)
+f93_293                 || (orderStatus.compareToIgnoreCase("cancelled") == 0)) {
+f93_294             return true;
+f93_295         }
+f93_296         return false;
+f93_297     }
+--- END METHOD: OrderDataBean.isCompleted no_of_lines : 8 ---
+
+--- BEGIN METHOD: OrderDataBean.getOrderStatus no_of_lines : 3 ---
+f93_183     public String getOrderStatus() {
+f93_184         return orderStatus;
+f93_185     }
+--- END METHOD: OrderDataBean.getOrderStatus no_of_lines : 3 ---
+
+--- BEGIN METHOD: TradeSLSBBean.createHolding no_of_lines : 5 ---
+f219_669     private HoldingDataBean createHolding(AccountDataBean account, QuoteDataBean quote, double quantity, BigDecimal purchasePrice) throws Exception {
+f219_670         HoldingDataBean newHolding = new HoldingDataBean(quantity, purchasePrice, new Timestamp(System.currentTimeMillis()), account, quote);
+f219_671         entityManager.persist(newHolding);
+f219_672         return newHolding;
+f219_673     }
+--- END METHOD: TradeSLSBBean.createHolding no_of_lines : 5 ---
+
+--- BEGIN METHOD: HoldingDataBean.HoldingDataBean no_of_lines : 18 ---
+f53_76     public HoldingDataBean() {
+f53_77     }
+
+f53_79     public HoldingDataBean(Integer holdingID, double quantity, BigDecimal purchasePrice, Date purchaseDate, String quoteID) {
+f53_80         setHoldingID(holdingID);
+f53_81         setQuantity(quantity);
+f53_82         setPurchasePrice(purchasePrice);
+f53_83         setPurchaseDate(purchaseDate);
+f53_84         setQuoteID(quoteID);
+f53_85     }
+
+f53_87     public HoldingDataBean(double quantity, BigDecimal purchasePrice, Date purchaseDate, AccountDataBean account, QuoteDataBean quote) {
+f53_88         setQuantity(quantity);
+f53_89         setPurchasePrice(purchasePrice);
+f53_90         setPurchaseDate(purchaseDate);
+f53_91         setAccount(account);
+f53_92         setQuote(quote);
+f53_93     }
+--- END METHOD: HoldingDataBean.HoldingDataBean no_of_lines : 18 ---
+
+--- BEGIN METHOD: HoldingDataBean.setQuoteID no_of_lines : 3 ---
+f53_158     public void setQuoteID(String quoteID) {
+f53_159         this.quoteID = quoteID;
+f53_160     }
+--- END METHOD: HoldingDataBean.setQuoteID no_of_lines : 3 ---
+
+--- BEGIN METHOD: HoldingDataBean.setAccount no_of_lines : 3 ---
+f53_166     public void setAccount(AccountDataBean account) {
+f53_167         this.account = account;
+f53_168     }
+--- END METHOD: HoldingDataBean.setAccount no_of_lines : 3 ---
+
+--- BEGIN METHOD: HoldingDataBean.setPurchasePrice no_of_lines : 3 ---
+f53_139     public void setPurchasePrice(BigDecimal purchasePrice) {
+f53_140         this.purchasePrice = purchasePrice;
+f53_141     }
+--- END METHOD: HoldingDataBean.setPurchasePrice no_of_lines : 3 ---
+
+--- BEGIN METHOD: HoldingDataBean.setHoldingID no_of_lines : 3 ---
+f53_123     public void setHoldingID(Integer holdingID) {
+f53_124         this.holdingID = holdingID;
+f53_125     }
+--- END METHOD: HoldingDataBean.setHoldingID no_of_lines : 3 ---
+
+--- BEGIN METHOD: HoldingDataBean.setQuote no_of_lines : 3 ---
+f53_174     public void setQuote(QuoteDataBean quote) {
+f53_175         this.quote = quote;
+f53_176     }
+--- END METHOD: HoldingDataBean.setQuote no_of_lines : 3 ---
+
+--- BEGIN METHOD: HoldingDataBean.setQuantity no_of_lines : 3 ---
+f53_131     public void setQuantity(double quantity) {
+f53_132         this.quantity = quantity;
+f53_133     }
+--- END METHOD: HoldingDataBean.setQuantity no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.getHolding no_of_lines : 3 ---
+f93_258     public HoldingDataBean getHolding() {
+f93_259         return holding;
+f93_260     }
+--- END METHOD: OrderDataBean.getHolding no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.getQuantity no_of_lines : 3 ---
+f93_207     public double getQuantity() {
+f93_208         return quantity;
+f93_209     }
+--- END METHOD: OrderDataBean.getQuantity no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.getAccount no_of_lines : 3 ---
+f93_242     public AccountDataBean getAccount() {
+f93_243         return account;
+f93_244     }
+--- END METHOD: OrderDataBean.getAccount no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.isSell no_of_lines : 7 ---
+f93_274     public boolean isSell() {
+f93_275         String orderType = getOrderType();
+f93_276         if (orderType.compareToIgnoreCase("sell") == 0) {
+f93_277             return true;
+f93_278         }
+f93_279         return false;
+f93_280     }
+--- END METHOD: OrderDataBean.isSell no_of_lines : 7 ---
+
+--- BEGIN METHOD: OrderDataBean.getOrderFee no_of_lines : 3 ---
+f93_223     public BigDecimal getOrderFee() {
+f93_224         return orderFee;
+f93_225     }
+--- END METHOD: OrderDataBean.getOrderFee no_of_lines : 3 ---
+
+--- BEGIN METHOD: HoldingDataBean.getQuantity no_of_lines : 3 ---
+f53_127     public double getQuantity() {
+f53_128         return quantity;
+f53_129     }
+--- END METHOD: HoldingDataBean.getQuantity no_of_lines : 3 ---
+
+--- BEGIN METHOD: AccountDataBean.setBalance no_of_lines : 3 ---
+f7_195     public void setBalance(BigDecimal balance) {
+f7_196         this.balance = balance;
+f7_197     }
+--- END METHOD: AccountDataBean.setBalance no_of_lines : 3 ---
+
+--- BEGIN METHOD: TradeServices.updateQuotePriceVolume no_of_lines : 0 ---
+/* definition not provided */
+--- END METHOD: TradeServices.updateQuotePriceVolume no_of_lines : 0 ---
+
+--- BEGIN METHOD: orderData.getSymbol no_of_lines : 3 ---
+f92_120     public String getSymbol() {
+f92_121         return symbol;
+f92_122     }
+--- END METHOD: orderData.getSymbol no_of_lines : 3 ---
+
+--- BEGIN METHOD: TradeServices.sell no_of_lines : 0 ---
+/* definition not provided */
+--- END METHOD: TradeServices.sell no_of_lines : 0 ---
+
+--- BEGIN METHOD: TradeConfig.getRandomPriceChangeFactor no_of_lines : 16 ---
+f206_372     public static BigDecimal getRandomPriceChangeFactor() {
+f206_373         // CJB (DAYTRADER-25) - Vary change factor between 1.1 and 0.9
+f206_374         double percentGain = rndFloat(1) * 0.1;
+f206_375         if (random() < .5) {
+f206_376             percentGain *= -1;
+f206_377         }
+f206_378         percentGain += 1;
+f206_379 
+f206_380         // change factor is between +/- 20%
+f206_381         BigDecimal percentGainBD = (new BigDecimal(percentGain)).setScale(2, BigDecimal.ROUND_HALF_UP);
+f206_382         if (percentGainBD.doubleValue() <= 0.0) {
+f206_383             percentGainBD = ONE;
+f206_384         }
+f206_385 
+f206_386         return percentGainBD;
+f206_387     }
+--- END METHOD: TradeConfig.getRandomPriceChangeFactor no_of_lines : 16 ---
+
+--- BEGIN METHOD: TradeConfig.rndFloat no_of_lines : 3 ---
+f206_346     public static float rndFloat(int i) {
+f206_347         return (new Float(random() * i)).floatValue();
+f206_348     }
+--- END METHOD: TradeConfig.rndFloat no_of_lines : 3 ---
+
+--- BEGIN METHOD: orderData.getOrderStatus no_of_lines : 3 ---
+f92_72     public String getOrderStatus() {
+f92_73         return orderStatus;
+f92_74     }
+--- END METHOD: orderData.getOrderStatus no_of_lines : 3 ---
+
+--- BEGIN METHOD: OrderDataBean.getSymbol no_of_lines : 6 ---
+f93_231     public String getSymbol() {
+f93_232         if (quote != null) {
+f93_233             return quote.getSymbol();
+f93_234         }
+f93_235         return symbol;
+f93_236     }
+--- END METHOD: OrderDataBean.getSymbol no_of_lines : 6 ---
+
+--- BEGIN METHOD: orderData.getQuantity no_of_lines : 3 ---
+f92_112     public double getQuantity() {
+f92_113         return quantity;
+f92_114     }
+--- END METHOD: orderData.getQuantity no_of_lines : 3 ---
+
+--- BEGIN METHOD: C008_TradeSLSBBeansell no_of_lines : 1 ---
+/* --- Application Properties Bindings (from CSV) --- */
+--- END METHOD: C008_TradeSLSBBeansell no_of_lines : 1 ---
