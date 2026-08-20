@@ -8453,7 +8453,31 @@ class JavaAdapter(LanguageAdapter):
         if "file_name" not in df_cleaned_ast.columns:
             return pd.DataFrame()
 
-        unique_file_names = df_cleaned_ast["file_name"].dropna().unique().tolist()
+        unique_file_names_set = set(df_cleaned_ast["file_name"].dropna().unique().tolist())
+
+        # Also collect file paths from object_call column.
+        # object_call values look like: C:\Downloads\path\to\Class.methodName
+        # Split on the LAST dot → left part is the file path, right part is method.
+        # Add the file path part to unique_file_names so its variables get extracted too.
+        object_call_pairs = []   # list of (raw_file_path_str, method_name_str)
+        if "object_call" in df_cleaned_ast.columns:
+            for oc_val in df_cleaned_ast["object_call"].dropna().unique():
+                oc_str = str(oc_val).strip()
+                if not oc_str:
+                    continue
+                last_dot = oc_str.rfind(".")
+                if last_dot == -1:
+                    continue
+                oc_file_part   = oc_str[:last_dot]   # e.g. C:\Downloads\path\to\Class
+                oc_method_part = oc_str[last_dot + 1:]  # e.g. methodName
+                if not oc_file_part or not oc_method_part:
+                    continue
+                # Strip any trailing () from method name
+                oc_method_part = oc_method_part.rstrip("()")
+                object_call_pairs.append((oc_file_part, oc_method_part))
+                unique_file_names_set.add(oc_file_part)
+
+        unique_file_names = list(unique_file_names_set)
 
         # ── Step 2: build per-file variable dictionaries ───────────────
         file_var_dict = self._build_file_variable_dict(java_folder, unique_file_names)
@@ -8496,43 +8520,39 @@ class JavaAdapter(LanguageAdapter):
             code_cache[raw_file_name] = code
             return code
 
-        # ── Step 4: iterate (file_name, method_name) pairs ─────────────
+        # ── Step 4: build unified pair list ────────────────────────────
+        # Each entry: (raw_file_name, method_name)
+        # Source A — file_name + method_name columns
+        # Source B — object_call split pairs
         rows = []
 
-        # Work with unique (file_name, method_name) pairs to avoid
-        # duplicate scanning of the same method body.
-        pair_cols = ["file_name", "method_name"]
-        available_cols = [c for c in pair_cols if c in df_cleaned_ast.columns]
-        if "method_name" not in available_cols:
+        if "method_name" not in df_cleaned_ast.columns:
             return pd.DataFrame()
 
-        unique_pairs = (
-            df_cleaned_ast[available_cols]
+        pairs_from_file_name = (
+            df_cleaned_ast[["file_name", "method_name"]]
             .dropna(subset=["method_name"])
             .drop_duplicates()
+            .apply(lambda r: (str(r["file_name"]), str(r["method_name"])), axis=1)
+            .tolist()
         )
 
-        for _, pair_row in unique_pairs.iterrows():
-            raw_file_name = str(pair_row["file_name"])
-            method_name   = str(pair_row["method_name"])
+        # Deduplicate object_call pairs and combine
+        all_pairs = list(dict.fromkeys(pairs_from_file_name + object_call_pairs))
 
+        def _emit_rows(raw_file_name, method_name):
+            """Scan method body in raw_file_name for inline variable usage."""
             var_dict = file_var_dict.get(raw_file_name, {})
             if not var_dict:
-                continue
-
+                return
             code = _get_code(raw_file_name)
             if not code:
-                continue
-
+                return
             method_body = self._extract_method_body(code, method_name)
             if not method_body:
-                continue
-
+                return
             java_path = file_path_map.get(raw_file_name)
             file_stem = Path(raw_file_name).stem
-
-            # Check which variables from the file-level dict appear in this
-            # method body as whole-word references.
             for var_name, var_value in var_dict.items():
                 pattern = re.compile(r'\b' + re.escape(var_name) + r'\b')
                 if pattern.search(method_body):
@@ -8546,6 +8566,9 @@ class JavaAdapter(LanguageAdapter):
                         "method_name":          method_name,
                         "Actual Value":         var_value,
                     })
+
+        for raw_file_name, method_name in all_pairs:
+            _emit_rows(raw_file_name, method_name)
 
         # ── Step 5: build DataFrame with standard column layout ─────────
         df = pd.DataFrame(rows)
