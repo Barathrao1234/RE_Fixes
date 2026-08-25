@@ -413,6 +413,7 @@ business_function: |
   - Multiple related actions or outcomes can be grouped together in the same paragraph if they belong to the same function or concept.
   - Avoid using variable names, method names, or technical terms; instead, describe the behavior in terms of business outcomes and user-facing results.
   - Each paragraph must be self-contained and readable in isolation, providing enough context so that it makes sense without referring to other sections.
+  - All business functions must be presented in a logical, ordered, and structured sequence — organized by workflow stage, dependency, or business priority — so that the overall flow of the system is clear and easy to follow from start to finish.
   source_line_ranges: ["fXXXX_XX-fYYYY_YY"]
 
 [Input to be analysed]:
