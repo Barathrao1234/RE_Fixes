@@ -415,6 +415,17 @@ business_function: |
   - Each paragraph must be self-contained and readable in isolation, providing enough context so that it makes sense without referring to other sections.
   - All business functions must be presented in a logical, ordered, and structured sequence — organized by workflow stage, dependency, or business priority — so that the overall flow of the system is clear and easy to follow from start to finish.
   source_line_ranges: ["fXXXX_XX-fYYYY_YY"]
+- SQL Section: |
+  FORMAT RULES (STRICT):
+  - Every SQL statement used in the code must be documented under a dedicated "SQL Section" that is clearly separated from the business function descriptions.
+  - For each SQL statement, the variable name referenced in the Java code must be explicitly identified, and its actual resolved value must be stated and explained in full — do not leave the variable as a placeholder; always expand it to its real content as provided in the Application Properties Bindings.
+  - The SQL logic must be narrated in thorough detail, explaining step by step what the query is doing in plain business language — including what data is being selected, inserted, updated, or deleted, and what conditions or filters are applied.
+  - The database connection details must be described narratively — including the database name, schema, or data source being targeted, explained in the context of what part of the business system it belongs to.
+  - Every table name referenced in the SQL must be identified and explained — describe what business entity or data the table represents and its role in the query.
+  - Every column or field referenced must be explained in terms of the business data it holds and why it is relevant to the operation being performed.
+  - Any WHERE clauses, JOIN conditions, GROUP BY, ORDER BY, or subqueries must be explained narratively, describing the business logic and filtering intent behind each condition.
+  - The SQL Section is intended to support Forward Engineering — meaning the explanation must be detailed and precise enough that a developer or architect could reconstruct the database interaction, table structure, and query logic solely from the narrative description without referencing the original code.
+  - Each SQL entry must reference its source using the format: From: path_of_class.method, so that the origin of the SQL statement is always traceable back to the exact class and method in the codebase.
 
 [Input to be analysed]:
 
