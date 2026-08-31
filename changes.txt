@@ -1,0 +1,55 @@
+                # If we can find a FQN for this simple class name from the caller
+                # source, prefer _resolve_fqn_path (exact FQN lookup) over the
+                # ambiguous simple-name lookup in _resolve_class_path.
+                #
+                # IMPORTANT: Only use the FQN from the *specific source variable* that
+                # produced this call (identified via source_object_call).  Scanning all
+                # var-map values for any type whose simple name matches cls_name causes
+                # incorrect path overriding when the same simple name maps to two
+                # different classes in the same method, e.g.:
+                #
+                #   import nl.domainrequest.Request;
+                #   private ... createRequestDetails(final nl.schema.document.Request eqpo) {
+                #       Request details = new Request();          // nl.domainrequest.Request
+                #       details.method1(...);                     // <- must use domainrequest path
+                #       eqpo.m1();                                // <- must use schema.document path
+                #   }
+                #
+                # The old code iterated _vmap_method_uc.values() and picked the first
+                # FQN ending in "Request" – which was always the parameter's
+                # nl.schema.document.Request – and applied it to BOTH calls.
+                _fqn_hint = None
+
+                # Step A: source-variable-pinned lookup (highest precision).
+                # Extract the source variable from source_object_call (e.g. "details"
+                # from "details.method1(...)") and look up only *its* declared type.
+                _fqn_src_var2 = None
+                if isinstance(source_object_call, str):
+                    _sm3 = _base_class_re.match(source_object_call.strip())
+                    if _sm3:
+                        _fqn_src_var2 = _sm3.group(1)
+
+                if _fqn_src_var2 and _fqn_src_var2[:1].islower():
+                    # Lowercase source variable: look up only that variable's declared type.
+                    _src_type2 = _vmap_method_uc.get(_fqn_src_var2) or _vmap_uc.get(_fqn_src_var2)
+                    if isinstance(_src_type2, str):
+                        _src_type2 = strip_generics(_src_type2).strip()
+                        if '.' in _src_type2 and _src_type2[0].islower() and _src_type2.split('.')[-1] == cls_name:
+                            _fqn_hint = _src_type2
+                elif _fqn_src_var2 is None or _fqn_src_var2[:1].isupper():
+                    # No source variable (or already UpperCamelCase class name): fall back
+                    # to scanning *all* method-scope vars. This is safe when there is only
+                    # one variable in scope whose type simple-name matches cls_name.
+                    _matching_fqns = [
+                        strip_generics(_t).strip()
+                        for _t in _vmap_method_uc.values()
+                        if isinstance(_t, str)
+                        and strip_generics(_t).strip()[:1].islower()
+                        and strip_generics(_t).strip().split('.')[-1] == cls_name
+                    ]
+                    if len(_matching_fqns) == 1:
+                        # Unambiguous: exactly one FQN matches this simple name.
+                        _fqn_hint = _matching_fqns[0]
+                    elif len(_matching_fqns) > 1:
+                        # Ambiguous: multiple variables share the same simple class name.
+                        # Prefer the one whose import is already present in the caller
