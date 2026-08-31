@@ -52,4 +52,30 @@
                         _fqn_hint = _matching_fqns[0]
                     elif len(_matching_fqns) > 1:
                         # Ambiguous: multiple variables share the same simple class name.
-                        # Prefer the one whose import is already present in the caller
+                        # Prefer the one whose import is already present in the caller file;
+                        # if still tied, leave _fqn_hint=None and fall through to the
+                        # import-aware _resolve_class_path below.
+                        _imp_matched = [
+                            _fq for _fq in _matching_fqns
+                            if _fi_lower.get(_caller_norm_uc, {}).get(_fq.split('.')[-1]) == _fq
+                        ]
+                        if len(_imp_matched) == 1:
+                            _fqn_hint = _imp_matched[0]
+                        # else: leave _fqn_hint None -> fall through
+
+                # Step B: file-scope var_map fallback (only when method-scope gave nothing).
+                if not _fqn_hint and not _vmap_method_uc:
+                    _matching_fqns_uc = [
+                        strip_generics(_t).strip()
+                        for _t in _vmap_uc.values()
+                        if isinstance(_t, str)
+                        and strip_generics(_t).strip()[:1].islower()
+                        and strip_generics(_t).strip().split('.')[-1] == cls_name
+                    ]
+                    if len(_matching_fqns_uc) == 1:
+                        _fqn_hint = _matching_fqns_uc[0]
+
+                if _fqn_hint:
+                    _fqn_resolved = _resolve_fqn_path(_fqn_hint, caller_file, member_name=member_name)
+                    if _fqn_resolved:
+                        return "{}.{}".format(_strip_extension(_fqn_resolved), rest)
