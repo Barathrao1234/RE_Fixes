@@ -1,50 +1,30 @@
-                    next_type_paths = _resolve_type_paths_from_caller(next_class, owner_file_for_ret)
-                    if not next_type_paths and owner_file_for_ret != _current_ctx_file:
-                        next_type_paths = _resolve_type_paths_from_caller(next_class, _current_ctx_file)
+            caller_pkg = _file_to_package_early.get(caller_norm, "")
+            if caller_pkg:
+                same_pkg_fqn = "{}.{}".format(caller_pkg, s)
+                for _p in _fqn_to_paths_early.get(same_pkg_fqn, []):
+                    if _p not in out:
+                        out.append(_p)
 
-                    # FIX: When next_class exists in multiple packages (same simple name),
-                    # prioritize the candidate in the same package as owner_file_for_ret.
-                    # Without this, a globally-found duplicate Class3 from a different
-                    # package can be picked before the package-correct one (nl.path2.Class3).
-                    if len(next_type_paths) > 1 and owner_file_for_ret:
-                        _owner_norm_fix = os.path.normcase(os.path.abspath(owner_file_for_ret))
-                        _owner_pkg_fix = _file_to_package_early.get(_owner_norm_fix, "")
-                        if _owner_pkg_fix:
-                            def _pkg_priority(_ntp, _opkg=_owner_pkg_fix):
-                                _ntp_norm = os.path.normcase(os.path.abspath(_ntp))
-                                _ntp_pkg = _file_to_package_early.get(_ntp_norm, "")
-                                if _ntp_pkg == _opkg:
-                                    return 0
-                                if (_ntp_pkg.startswith(_opkg + ".") or
-                                        _opkg.startswith(_ntp_pkg + ".")):
-                                    return 1
-                                return 2
-                            next_type_paths = sorted(next_type_paths, key=_pkg_priority)
+            # FIX: If caller has a known package but Class3.java has no package
+            # declaration, _fqn_to_paths_early misses the same-package entry.
+            # Fall back to physical directory: same-package files live in the
+            # same folder. Check if any global candidate for s is in the same
+            # directory as caller_file — if yes, treat it as same-package.
+            if caller_file:
+                _caller_dir = os.path.dirname(os.path.normcase(os.path.abspath(caller_file)))
+                for _p in type_to_path_full_early.get(s, []):
+                    _p_dir = os.path.dirname(os.path.normcase(os.path.abspath(_p)))
+                    if _p_dir == _caller_dir and _p not in out:
+                        out.append(_p)
 
-                    ok = False
+            for _pkg in _file_to_wildcards_early.get(caller_norm, []):
+                wfqn = "{}.{}".format(_pkg, s)
+                for _p in _fqn_to_paths_early.get(wfqn, []):
+                    if _p not in out:
+                        out.append(_p)
 
-----------------------------------------------------
-                    next_type_paths = _resolve_type_paths_from_caller(next_class, owner_file_for_ret)
-                    if not next_type_paths and owner_file_for_ret != _current_ctx_file:
-                        next_type_paths = _resolve_type_paths_from_caller(next_class, _current_ctx_file)
+            for _p in type_to_path_full_early.get(s, []):
+                if _p not in out:
+                    out.append(_p)
 
-                    # FIX: When next_class exists in multiple packages (same simple name),
-                    # prioritize the candidate in the same package as owner_file_for_ret.
-                    # Without this, a globally-found duplicate Class3 from a different
-                    # package can be picked before the package-correct one (nl.path2.Class3).
-                    if len(next_type_paths) > 1 and owner_file_for_ret:
-                        _owner_norm_fix = os.path.normcase(os.path.abspath(owner_file_for_ret))
-                        _owner_pkg_fix = _file_to_package_early.get(_owner_norm_fix, "")
-                        if _owner_pkg_fix:
-                            def _pkg_priority(_ntp, _opkg=_owner_pkg_fix):
-                                _ntp_norm = os.path.normcase(os.path.abspath(_ntp))
-                                _ntp_pkg = _file_to_package_early.get(_ntp_norm, "")
-                                if _ntp_pkg == _opkg:
-                                    return 0
-                                if (_ntp_pkg.startswith(_opkg + ".") or
-                                        _opkg.startswith(_ntp_pkg + ".")):
-                                    return 1
-                                return 2
-                            next_type_paths = sorted(next_type_paths, key=_pkg_priority)
-
-                    ok = False
+            return out
