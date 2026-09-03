@@ -1,30 +1,59 @@
-            caller_pkg = _file_to_package_early.get(caller_norm, "")
-            if caller_pkg:
-                same_pkg_fqn = "{}.{}".format(caller_pkg, s)
-                for _p in _fqn_to_paths_early.get(same_pkg_fqn, []):
-                    if _p not in out:
-                        out.append(_p)
+                    ok = False
+                    if next_type_paths:
+                        # When multiple paths exist for next_class, prefer the one
+                        # physically in the same directory as owner_file_for_ret
+                        # (same-package files live in the same folder).
+                        # This avoids relying on sort order or _method_exists_in_class
+                        # searching all candidates globally.
+                        _preferred_ntp = None
+                        if owner_file_for_ret and len(next_type_paths) > 1:
+                            _owner_dir = os.path.dirname(os.path.normcase(os.path.abspath(owner_file_for_ret)))
+                            for _ntp in next_type_paths:
+                                _ntp_dir = os.path.dirname(os.path.normcase(os.path.abspath(_ntp)))
+                                if _ntp_dir == _owner_dir:
+                                    _preferred_ntp = _ntp
+                                    break
+                        _ordered_paths = ([_preferred_ntp] + [p for p in next_type_paths if p != _preferred_ntp]) if _preferred_ntp else next_type_paths
+                        for _ntp in _ordered_paths:
+                            _next_simple = os.path.splitext(os.path.basename(_ntp))[0]
+                            if _method_exists_in_class(
+                                _next_simple,
+                                next_m,
+                                caller_file=_ntp,
+                                fallback_class_name=super_fb_cls,
+                            ):
+                                current_class = _next_simple
+                                _current_ctx_file = _ntp
+                                ok = True
+                                break
 
-            # FIX: If caller has a known package but Class3.java has no package
-            # declaration, _fqn_to_paths_early misses the same-package entry.
-            # Fall back to physical directory: same-package files live in the
-            # same folder. Check if any global candidate for s is in the same
-            # directory as caller_file — if yes, treat it as same-package.
-            if caller_file:
-                _caller_dir = os.path.dirname(os.path.normcase(os.path.abspath(caller_file)))
-                for _p in type_to_path_full_early.get(s, []):
-                    _p_dir = os.path.dirname(os.path.normcase(os.path.abspath(_p)))
-                    if _p_dir == _caller_dir and _p not in out:
-                        out.append(_p)
+------------------------------------------------
 
-            for _pkg in _file_to_wildcards_early.get(caller_norm, []):
-                wfqn = "{}.{}".format(_pkg, s)
-                for _p in _fqn_to_paths_early.get(wfqn, []):
-                    if _p not in out:
-                        out.append(_p)
-
-            for _p in type_to_path_full_early.get(s, []):
-                if _p not in out:
-                    out.append(_p)
-
-            return out
+                    ok = False
+                    if next_type_paths:
+                        # When multiple paths exist for next_class, prefer the one
+                        # physically in the same directory as owner_file_for_ret
+                        # (same-package files live in the same folder).
+                        # This avoids relying on sort order or _method_exists_in_class
+                        # searching all candidates globally.
+                        _preferred_ntp = None
+                        if owner_file_for_ret and len(next_type_paths) > 1:
+                            _owner_dir = os.path.dirname(os.path.normcase(os.path.abspath(owner_file_for_ret)))
+                            for _ntp in next_type_paths:
+                                _ntp_dir = os.path.dirname(os.path.normcase(os.path.abspath(_ntp)))
+                                if _ntp_dir == _owner_dir:
+                                    _preferred_ntp = _ntp
+                                    break
+                        _ordered_paths = ([_preferred_ntp] + [p for p in next_type_paths if p != _preferred_ntp]) if _preferred_ntp else next_type_paths
+                        for _ntp in _ordered_paths:
+                            _next_simple = os.path.splitext(os.path.basename(_ntp))[0]
+                            if _method_exists_in_class(
+                                _next_simple,
+                                next_mtd,
+                                caller_file=_ntp,
+                                fallback_class_name=super_fb_cls,
+                            ):
+                                current_class = _next_simple
+                                _current_ctx_file = _ntp
+                                ok = True
+                                break
