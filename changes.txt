@@ -1,91 +1,30 @@
-                # Constructor call (ClassName.ClassName()): resolve per source variable first.
-                # If the source variable was FQN-declared (e.g. nl.path.one.Order orderA),
-                # use that FQN directly so orderA and orderB constructors resolve independently.
-                if _is_ctor_call:
-                    _ctor_src_var = None
-                    if isinstance(source_object_call, str):
-                        _ctor_sm = _base_class_re.match(source_object_call.strip())
-                        if _ctor_sm:
-                            _ctor_src_var = _ctor_sm.group(1)
-
-                    # Source variable is lowercase → look up its specific declared type
-                    if _ctor_src_var and _ctor_src_var[:1].islower():
-                        _ctor_src_type = _vmap_method_uc.get(_ctor_src_var) or _vmap_uc.get(_ctor_src_var)
-                        if isinstance(_ctor_src_type, str):
-                            _ctor_src_type = strip_generics(_ctor_src_type).strip()
-                            if '.' in _ctor_src_type and _ctor_src_type[0].islower() and _ctor_src_type.split('.')[-1] == cls_name:
-                                # FQN-declared variable: resolve via FQN directly, ignore import
-                                _ctor_fqn_resolved = _resolve_fqn_path(_ctor_src_type, caller_file, member_name=member_name)
-                                if _ctor_fqn_resolved:
-                                    return "{}.{}".format(_strip_extension(_ctor_fqn_resolved), rest)
-                            elif _ctor_src_type and _ctor_src_type[0].isupper():
-                                # Simple name variable (e.g. new Order()): use import to disambiguate
-                                if _imp_fqn:
-                                    _ctor_from_import = _resolve_fqn_path(_imp_fqn, caller_file, member_name=member_name)
-                                    if _ctor_from_import:
-                                        return "{}.{}".format(_strip_extension(_ctor_from_import), rest)
-
-                    # No source variable info: fall back to import then scoped resolution
-                    elif _imp_fqn:
-                        _ctor_from_import = _resolve_fqn_path(_imp_fqn, caller_file, member_name=member_name)
-                        if _ctor_from_import:
-                            return "{}.{}".format(_strip_extension(_ctor_from_import), rest)
-
-                    # If import is absent, prefer caller package/same-scope resolution
-                    _ctor_scoped = _resolve_class_path(cls_name, caller_file, member_name=member_name)
-                    if _ctor_scoped:
-                        return "{}.{}".format(_strip_extension(_ctor_scoped), rest)
-
-----------------------------------
-
                 elif not _is_ctor_call:
-                    # UpperCamelCase root (already a class name, not a variable):
-                    # scan all method-scope vars for a FQN whose simple name matches cls_name.
-                    # ONLY do this when there is no explicit import for cls_name.
-                    # If an explicit import exists, it already identifies which of the
-                    # duplicate-named classes the caller uses for simple-name (`new`) creation.
-                    # Scanning all vars would pick the FQN-declared variable's path and
-                    # apply it wrongly to the simple-name-created object's calls.
-                    if not _imp_fqn:
-                        for _t in (_vmap_method_uc.values() or []):
-                            if not isinstance(_t, str):
-                                continue
-                            _tt = strip_generics(_t).strip()
-                            if not _tt:
-                                continue
-                            if '.' in _tt and _tt[0].islower() and _tt.split('.')[-1] == cls_name:
-                                if _tt not in _fqn_candidates:
-                                    _fqn_candidates.append(_tt)
+                    # UpperCamelCase root with no traceable source variable.
+                    # Scan method-scope vars for FQN types whose simple name matches cls_name.
+                    # Collect ALL of them — then filter out any that resolve to the
+                    # same path as the explicit import (those belong to the `new` object).
+                    # Whatever remains must belong to a FQN-declared object with a
+                    # different path, and that is the one we want.
+                    _import_resolved_path = None
+                    if _imp_fqn:
+                        _import_resolved_path = _resolve_fqn_path(
+                            _imp_fqn, caller_file, member_name=member_name
+                        )
 
----------------------------------------
-
-                # FQN hint: resolve only from the *specific source variable* that
-                # produced this call, not from any variable in scope.
-                # Scanning all vars picks the FQN-declared variable's path and
-                # applies it wrongly to simple-name-created object calls.
-                # Only use _fqn_hint when:
-                #   1. source_object_call identifies a lowercase variable, AND
-                #   2. that variable's declared type is a package-qualified FQN, AND
-                #   3. there is no explicit import for cls_name (import takes priority).
-                _fqn_hint = None
-                if not _imp_fqn:
-                    _hint_src_var = None
-                    if isinstance(source_object_call, str):
-                        _hint_sm = _base_class_re.match(source_object_call.strip())
-                        if _hint_sm:
-                            _hint_src_var = _hint_sm.group(1)
-
-                    if _hint_src_var and _hint_src_var[:1].islower():
-                        # Look up only that specific variable's declared type
-                        _hint_type = _vmap_method_uc.get(_hint_src_var) or _vmap_uc.get(_hint_src_var)
-                        if (isinstance(_hint_type, str)
-                                and _hint_type[0].islower()
-                                and _hint_type.split('.')[-1] == cls_name):
-                            _fqn_hint = _hint_type
-                    # If source variable is unknown/absent: do NOT scan all vars.
-                    # Fall through to _resolve_class_path which uses import + package.
-
-                if _fqn_hint:
-                    _fqn_resolved = _resolve_fqn_path(_fqn_hint, caller_file, member_name=member_name)
-                    if _fqn_resolved:
-                        return "{}.{}".format(_strip_extension(_fqn_resolved), rest)
+                    for _t in (_vmap_method_uc.values() or []):
+                        if not isinstance(_t, str):
+                            continue
+                        _tt = strip_generics(_t).strip()
+                        if not _tt:
+                            continue
+                        if '.' in _tt and _tt[0].islower() and _tt.split('.')[-1] == cls_name:
+                            # Only add this FQN candidate if it resolves to a
+                            # DIFFERENT path than the import.
+                            # If it resolves to the same path as the import,
+                            # it belongs to the `new`-created object — skip it.
+                            if _import_resolved_path:
+                                _tt_path = _resolve_fqn_path(_tt, caller_file, member_name=member_name)
+                                if _tt_path and os.path.normcase(_tt_path) == os.path.normcase(_import_resolved_path):
+                                    continue   # same file as import → skip
+                            if _tt not in _fqn_candidates:
+                                _fqn_candidates.append(_tt)
