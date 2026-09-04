@@ -532,10 +532,10 @@ body{background:#EEF2FF;font-family:'Segoe UI',Arial,sans-serif;overflow:hidden}
 /* ── canvas ── */
 #wrap{
   position:fixed;top:46px;left:0;right:0;bottom:0;
-  overflow:hidden;
+  overflow:auto;
 }
 #wrap.grabbing{cursor:grabbing}
-svg{position:absolute;top:0;left:0;overflow:visible}
+svg{display:block;overflow:visible}
 
 /* ── nodes ── */
 .ngrp{cursor:pointer}
@@ -758,8 +758,8 @@ function render(){
   while(scene.firstChild) scene.removeChild(scene.firstChild);
 
   const {w,h} = layoutAll();
-  svgEl.setAttribute('width',  Math.max(w, window.innerWidth));
-  svgEl.setAttribute('height', Math.max(h, window.innerHeight-46));
+  svgEl.setAttribute('width',  w);
+  svgEl.setAttribute('height', h);
 
   const edgeG = mkEl('g',{},scene);
   const nodeG = mkEl('g',{},scene);
@@ -854,29 +854,24 @@ function collapseAll(){
   render(); applyXform();
 }
 
-// ── PAN + ZOOM ────────────────────────────────────────────────
-let tx=0,ty=0,sc=1,drag=false,ox,oy,stx,sty;
+// ── ZOOM (Ctrl+wheel) — scroll handles pan natively ─────────
+let sc=1;
 const wrap = document.getElementById('wrap');
 
 function applyXform(){
-  scene.setAttribute('transform',`translate(${tx},${ty}) scale(${sc})`);
+  scene.setAttribute('transform',`scale(${sc})`);
+  // keep SVG intrinsic size in sync so scrollbars stay correct
+  const {w,h} = layoutAll();
+  svgEl.setAttribute('width',  Math.round(w*sc));
+  svgEl.setAttribute('height', Math.round(h*sc));
 }
-wrap.addEventListener('mousedown',e=>{
-  if(e.target.closest('.ngrp')) return;
-  drag=true; wrap.classList.add('grabbing');
-  ox=e.clientX; oy=e.clientY; stx=tx; sty=ty;
-});
-window.addEventListener('mousemove',e=>{
-  if(!drag) return;
-  tx=stx+(e.clientX-ox); ty=sty+(e.clientY-oy); applyXform();
-});
-window.addEventListener('mouseup',()=>{ drag=false; wrap.classList.remove('grabbing'); });
 wrap.addEventListener('wheel',e=>{
+  if(!e.ctrlKey) return;   // plain scroll → browser handles it
   e.preventDefault();
-  sc=Math.min(4,Math.max(0.08, sc*(e.deltaY<0?1.12:0.9)));
+  sc=Math.min(4,Math.max(0.2, sc*(e.deltaY<0?1.12:0.9)));
   applyXform();
 },{passive:false});
-function resetView(){ tx=0;ty=0;sc=1; applyXform(); }
+function resetView(){ sc=1; applyXform(); wrap.scrollTo(0,0); }
 
 // ── INIT ─────────────────────────────────────────────────────
 render();
@@ -907,4 +902,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
