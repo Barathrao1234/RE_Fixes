@@ -161,10 +161,12 @@ const PAL = [
 const pal = d => PAL[Math.min(d, PAL.length-1)];
 
 // ── LAYOUT CONSTANTS ─────────────────────────────────────────
-const FONT_PX   = 11;       // approximate px per char (monospace)
 const CHAR_W    = 6.8;      // px per character at font-size 12
-const BOX_PH    = 38;       // fixed box height
-const H_PAD     = 20;       // horizontal text padding inside box
+const BOX_MIN_W = 120;      // minimum box width
+const BOX_MAX_W = 220;      // maximum box width (caps long paths)
+const LINE_H    = 16;       // px per text line inside box
+const V_PAD     = 10;       // top+bottom padding inside box (each side)
+const H_PAD     = 16;       // horizontal text padding inside box
 const H_GAP     = 28;       // gap between sibling boxes
 const V_GAP     = 72;       // vertical gap between levels
 
@@ -177,15 +179,47 @@ const nodeMap = {};
 function index(node){ nodeMap[node.id]=node; node.children.forEach(index); }
 index(TREE);
 
-// ── BOX WIDTH (auto-fit text) ─────────────────────────────────
-function boxW(name){
-  return Math.max(120, Math.ceil(name.length * CHAR_W) + H_PAD * 2);
+// ── TEXT WRAPPING ─────────────────────────────────────────────
+// Max chars that fit in BOX_MAX_W (minus padding)
+const MAX_CHARS = Math.floor((BOX_MAX_W - H_PAD * 2) / CHAR_W);
+
+function wrapText(name){
+  // Split on common path separators and underscores for natural break points
+  // but keep the token itself attached to the next segment
+  if(name.length <= MAX_CHARS) return [name];
+  const lines = [];
+  let remaining = name;
+  while(remaining.length > MAX_CHARS){
+    // Find a good break point (space, _, -, .) working backwards from MAX_CHARS
+    let cut = MAX_CHARS;
+    for(let i = MAX_CHARS; i > MAX_CHARS - 20 && i > 0; i--){
+      const ch = remaining[i];
+      if(ch === '_' || ch === '-' || ch === '.' || ch === '/' || ch === ' '){
+        cut = i + 1; // break after separator
+        break;
+      }
+    }
+    lines.push(remaining.slice(0, cut));
+    remaining = remaining.slice(cut);
+  }
+  if(remaining) lines.push(remaining);
+  return lines;
+}
+
+// ── BOX DIMENSIONS (width + height, wrapping-aware) ──────────
+function boxDims(name){
+  const lines = wrapText(name);
+  const maxLine = lines.reduce((m,l)=>Math.max(m,l.length),0);
+  const w = Math.min(BOX_MAX_W,
+              Math.max(BOX_MIN_W, Math.ceil(maxLine * CHAR_W) + H_PAD * 2));
+  const h = lines.length * LINE_H + V_PAD * 2;
+  return {w, h, lines};
 }
 
 // ── LAYOUT ───────────────────────────────────────────────────
 // Compute subtree width considering only currently open nodes
 function subtreeW(node){
-  const w = boxW(node.name);
+  const {w} = boxDims(node.name);
   if (!open[node.id] || node.children.length === 0) return w;
   const cw = node.children.reduce((s,c)=>s+subtreeW(c),0)
            + H_GAP*(node.children.length-1);
@@ -200,7 +234,8 @@ function layout(node, cx, cy){
   const ws = children.map(subtreeW);
   const total = ws.reduce((s,w)=>s+w,0) + H_GAP*(children.length-1);
   let x = cx - total/2;
-  const cy2 = cy + BOX_PH + V_GAP;
+  const {h} = boxDims(node.name);
+  const cy2 = cy + h + V_GAP;
   children.forEach((c,i)=>{ layout(c, x+ws[i]/2, cy2); x+=ws[i]+H_GAP; });
 }
 
@@ -211,15 +246,12 @@ function layoutAll(){
   const total = ws.reduce((s,w)=>s+w,0) + H_GAP*(roots.length-1);
   let x = PADDING;
   roots.forEach((r,i)=>{ layout(r, x+ws[i]/2, PADDING); x+=ws[i]+H_GAP; });
-  const allP = Object.values(pos);
-  const maxX = Math.max(...allP.map(p=>p.cx+boxW(nodeMap[Object.keys(pos).find(k=>pos[k]===p)].name)/2))+PADDING;
-  // safer:
   let mx=0, my=0;
   Object.keys(pos).forEach(id=>{
     const {cx,cy}=pos[id];
-    const bw=boxW(nodeMap[id].name);
-    mx=Math.max(mx, cx+bw/2);
-    my=Math.max(my, cy+BOX_PH);
+    const {w,h}=boxDims(nodeMap[id].name);
+    mx=Math.max(mx, cx+w/2);
+    my=Math.max(my, cy+h);
   });
   return {w: mx+PADDING, h: my+PADDING};
 }
@@ -256,7 +288,7 @@ function render(){
 
   function drawNode(node, parentId){
     const {cx,cy} = pos[node.id];
-    const bw = boxW(node.name);
+    const {w:bw, h:bh, lines} = boxDims(node.name);
     const p  = pal(node.depth);
     const hasKids = node.children.length > 0;
     const isOpen  = !!open[node.id];
@@ -264,11 +296,11 @@ function render(){
     // Edge from parent
     if(parentId !== null && pos[parentId]){
       const {cx:px, cy:py} = pos[parentId];
-      const pwb = boxW(nodeMap[parentId].name);
-      const midY = py + BOX_PH + V_GAP/2;
+      const {h:ph} = boxDims(nodeMap[parentId].name);
+      const midY = py + ph + V_GAP/2;
       mkEl('path',{
         'class':'edge',
-        d:`M${px},${py+BOX_PH} L${px},${midY} L${cx},${midY} L${cx},${cy}`
+        d:`M${px},${py+ph} L${px},${midY} L${cx},${midY} L${cx},${cy}`
       }, edgeG);
     }
 
@@ -278,29 +310,41 @@ function render(){
 
     // Shadow
     mkEl('rect',{
-      x:cx-bw/2+3, y:cy+3, width:bw, height:BOX_PH,
+      x:cx-bw/2+3, y:cy+3, width:bw, height:bh,
       rx:7, fill:'#C7D2FE', opacity:.5
     }, g);
 
     // Box
     mkEl('rect',{
       'class':'box',
-      x:cx-bw/2, y:cy, width:bw, height:BOX_PH,
+      x:cx-bw/2, y:cy, width:bw, height:bh,
       rx:7, fill:p.f, stroke:p.b, 'stroke-width':2
     }, g);
 
-    // Label  — centred vertically in box
-    mkTxt(node.name,{
-      x:cx, y:cy+BOX_PH/2+(hasKids?-1:1),
-      'text-anchor':'middle', 'dominant-baseline':'middle',
+    // Label — multi-line via <tspan>, centred vertically in box
+    // Reserve right margin for expand indicator when node has kids
+    const textX = hasKids ? cx - 6 : cx;
+    const totalTextH = lines.length * LINE_H;
+    const startY = cy + (bh - totalTextH) / 2 + LINE_H * 0.8; // first baseline
+    const txtEl = mkEl('text',{
+      x: textX,
+      y: startY,
+      'text-anchor':'middle',
       'font-family':'Consolas,monospace',
       'font-size':12, fill:p.t, 'font-weight':'bold'
     }, g);
+    lines.forEach((line, i) => {
+      const ts = document.createElementNS(NS, 'tspan');
+      ts.textContent = line;
+      ts.setAttribute('x', textX);
+      if(i > 0) ts.setAttribute('dy', LINE_H);
+      txtEl.appendChild(ts);
+    });
 
-    // Expand indicator (▶ collapsed / ▼ open)
+    // Expand indicator (▶ collapsed / ▼ open) — anchored to bottom-right
     if(hasKids){
       mkTxt(isOpen?'▾':'▸',{
-        x:cx+bw/2-10, y:cy+BOX_PH/2,
+        x:cx+bw/2-9, y:cy+bh-V_PAD,
         'class':'indicator',
         'text-anchor':'middle','dominant-baseline':'middle',
         'font-family':'Arial', fill:p.b
