@@ -559,14 +559,7 @@ svg{position:absolute;top:0;left:0;overflow:visible}
   <span id="breadcrumb">Click a node to expand its children</span>
 </div>
 
-<div id="legend">
-  <div class="lr"><div class="ld" style="background:#DBEAFE;border-color:#2563EB"></div><span style="color:#2563EB">Level 1</span></div>
-  <div class="lr"><div class="ld" style="background:#D1FAE5;border-color:#059669"></div><span style="color:#059669">Level 2</span></div>
-  <div class="lr"><div class="ld" style="background:#FEF3C7;border-color:#D97706"></div><span style="color:#D97706">Level 3</span></div>
-  <div class="lr"><div class="ld" style="background:#EDE9FE;border-color:#7C3AED"></div><span style="color:#7C3AED">Level 4</span></div>
-  <div class="lr"><div class="ld" style="background:#FEE2E2;border-color:#DC2626"></div><span style="color:#DC2626">Level 5</span></div>
-  <div class="lr"><div class="ld" style="background:#CFFAFE;border-color:#0891B2"></div><span style="color:#0891B2">Level 6</span></div>
-</div>
+<div id="legend"></div>
 
 <div id="wrap">
   <svg id="svg" xmlns="http://www.w3.org/2000/svg">
@@ -583,16 +576,44 @@ svg{position:absolute;top:0;left:0;overflow:visible}
 // ── DATA ─────────────────────────────────────────────────────
 const TREE = TREE_JSON;
 
-// ── PALETTE ──────────────────────────────────────────────────
-const PAL = [
-  {b:"#2563EB",f:"#DBEAFE",t:"#1E3A8A"},
-  {b:"#059669",f:"#D1FAE5",t:"#065F46"},
-  {b:"#D97706",f:"#FEF3C7",t:"#92400E"},
-  {b:"#7C3AED",f:"#EDE9FE",t:"#4C1D95"},
-  {b:"#DC2626",f:"#FEE2E2",t:"#7F1D1D"},
-  {b:"#0891B2",f:"#CFFAFE",t:"#164E63"},
-];
+// ── PALETTE — auto-generated for however many depths exist ────
+// Hue steps evenly around the colour wheel; bg is a light tint,
+// border/text are darker shades of the same hue.
+function makepal(n){
+  const out = [];
+  for(let i=0;i<n;i++){
+    const h = Math.round((i/n)*360);
+    // border: full saturation, medium lightness
+    const b = `hsl(${h},70%,40%)`;
+    // fill: very light tint
+    const f = `hsl(${h},70%,93%)`;
+    // text: dark shade
+    const t = `hsl(${h},60%,20%)`;
+    out.push({b,f,t});
+  }
+  return out;
+}
+
+// Count max depth in tree
+function maxDepth(node){ 
+  if(!node.children.length) return node.depth;
+  return Math.max(...node.children.map(maxDepth));
+}
+const NUM_LEVELS = maxDepth(TREE) + 1;  // depth is 0-based
+const PAL = makepal(NUM_LEVELS);
 const pal = d => PAL[Math.min(d, PAL.length-1)];
+
+// ── LEGEND — built dynamically ────────────────────────────────
+(function buildLegend(){
+  const el = document.getElementById('legend');
+  for(let d=0;d<NUM_LEVELS;d++){
+    const p = PAL[d];
+    el.innerHTML += `<div class="lr">
+      <div class="ld" style="background:${p.f};border-color:${p.b}"></div>
+      <span style="color:${p.b}">Level ${d+1}</span>
+    </div>`;
+  }
+})();
 
 // ── LAYOUT CONSTANTS ─────────────────────────────────────────
 const CHAR_W    = 6.8;   // px per character at font-size 12
@@ -886,3 +907,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
