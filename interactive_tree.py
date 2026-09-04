@@ -465,7 +465,11 @@ def build_tree(path):
     wb = openpyxl.load_workbook(path, read_only=True)
     ws = wb.active
     root = make_node("ROOT", 0, -1)
-    last_v = [None]*6; last_l = [0]*6; first = True
+    # Detect number of level columns from header row dynamically
+    header = next(ws.iter_rows(values_only=True))
+    ncols = sum(1 for h in header if h is not None and str(h).strip().lower().startswith('level'))
+    if ncols == 0: ncols = sum(1 for h in header if h is not None)  # fallback
+    last_v = [None]*ncols; last_l = [0]*ncols
 
     def find_or_add(parent, name, lines, depth):
         for c in parent["children"]:
@@ -475,13 +479,12 @@ def build_tree(path):
         return c
 
     for row in ws.iter_rows(values_only=True):
-        if first: first = False; continue
-        cur = list(row[:6])
-        for i in range(6):
+        cur = list(row[:ncols])
+        for i in range(ncols):
             if cur[i] is not None:
                 last_v[i] = extract_name(cur[i])
                 last_l[i] = extract_lines(cur[i])
-                for j in range(i+1, 6): last_v[j]=None; last_l[j]=0
+                for j in range(i+1, ncols): last_v[j]=None; last_l[j]=0
             cur[i] = last_v[i]
         names = cur[:]
         while names and names[-1] is None: names.pop()
