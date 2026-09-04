@@ -594,14 +594,16 @@ function makepal(n){
   return out;
 }
 
-// Count max depth in tree
-function maxDepth(node){ 
+// Count max depth — skip ROOT (depth=-1), walk all real nodes
+function maxDepth(node){
   if(!node.children.length) return node.depth;
-  return Math.max(...node.children.map(maxDepth));
+  return Math.max(node.depth, ...node.children.map(maxDepth));
 }
-const NUM_LEVELS = maxDepth(TREE) + 1;  // depth is 0-based
+// TREE.children are depth-0 nodes; maxDepth across all of them
+const MAX_DEPTH = TREE.children.length ? Math.max(...TREE.children.map(maxDepth)) : 0;
+const NUM_LEVELS = MAX_DEPTH + 1;  // depth 0..MAX_DEPTH → NUM_LEVELS colours
 const PAL = makepal(NUM_LEVELS);
-const pal = d => PAL[Math.min(d, PAL.length-1)];
+const pal = d => PAL[Math.min(Math.max(d,0), PAL.length-1)];
 
 // ── LEGEND — built dynamically ────────────────────────────────
 (function buildLegend(){
