@@ -666,31 +666,25 @@ function assignColX(){
   }
 }
 
-// Pass 3: assign y positions — subtree height
-// Returns the total height consumed by this node + its open subtree
+// Pass 3: assign y positions.
+// Parent always sits at topY. Children stack downward from topY.
+// Returns total vertical space consumed by this subtree.
 function layoutNode(node, topY){
   const {h} = boxDims(node.name);
   pos[node.id] = { x: colX[node.depth], y: topY };
 
-  if(!open[node.id] || node.children.length === 0){
-    return h;  // just this box
-  }
+  if(!open[node.id] || node.children.length === 0) return h;
 
-  // Children stacked vertically; parent y-centred on its children block
   let childY = topY;
-  let totalChildH = 0;
+  let totalH = 0;
   node.children.forEach((c, i) => {
     const ch = layoutNode(c, childY);
-    childY += ch + (i < node.children.length-1 ? ROW_GAP : 0);
-    totalChildH += ch + (i < node.children.length-1 ? ROW_GAP : 0);
+    childY += ch + ROW_GAP;
+    totalH  += ch + ROW_GAP;
   });
+  totalH -= ROW_GAP; // remove trailing gap
 
-  // Re-centre parent vertically over its children block
-  const blockH = totalChildH;
-  const parentMid = topY + blockH/2 - h/2;
-  pos[node.id] = { x: colX[node.depth], y: Math.max(topY, parentMid) };
-
-  return Math.max(h, blockH);
+  return Math.max(h, totalH);
 }
 
 const PAD = 40;
